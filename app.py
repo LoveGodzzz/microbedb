@@ -149,7 +149,7 @@ def page_strains():
 
 
 def detail_strain(sid):
-    s = q("""SELECT s.*, t.name AS species_name, t.taxon_id
+    s = q("""SELECT s.*, t.name AS species_name
              FROM strains s JOIN taxonomy t ON t.taxon_id = s.taxon_id
              WHERE s.strain_id=?""", (sid,)).iloc[0]
     st.markdown(f"### `{s.isolate_code}`　<i>{s.species_name}</i>", unsafe_allow_html=True)
