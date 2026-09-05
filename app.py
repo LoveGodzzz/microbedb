@@ -560,6 +560,28 @@ def page_upload():
     st.subheader("上传你的数据与数据库比对")
     st.caption("上传的文件只在内存中处理，不会被保存。对比基准：库内模拟组装 + RefSeq 真实基因组。")
 
+    with st.expander("📥 没有自己的数据？下载示例文件试一试", expanded=True):
+        d1, d2 = st.columns(2)
+        import os
+        fna_path = os.path.join(HERE, "sample_genome.fna.gz")
+        csv_path = os.path.join(HERE, "sample_assembly_stats.csv")
+        with d1:
+            if os.path.exists(fna_path):
+                st.download_button(
+                    "下载示例基因组 sample_genome.fna.gz（2.4 MB）",
+                    data=open(fna_path, "rb").read(),
+                    file_name="sample_genome.fna.gz",
+                    mime="application/gzip")
+                st.caption("模拟的 96-contig 细菌基因组，直接上传到左侧 FASTA 标签页测试")
+        with d2:
+            if os.path.exists(csv_path):
+                st.download_button(
+                    "下载示例统计表 sample_assembly_stats.csv",
+                    data=open(csv_path, "rb").read(),
+                    file_name="sample_assembly_stats.csv",
+                    mime="text/csv")
+                st.caption("8 个基因组的组装统计（含 6 个物种），上传到右侧 CSV 标签页测试")
+
     mode = st.tabs(["🧬 上传 FASTA（单个基因组）", "📄 上传 CSV/TSV（批量统计表）"])
 
     with mode[0]:

@@ -1,0 +1,9 @@
+isolate_id,species,total_length_bp,gc_percent,n50_bp
+MYS-2024-001,Escherichia coli,4938214,50.62,142
+MYS-2024-002,Escherichia coli,5210775,50.91,88
+MYS-2025-003,Staphylococcus aureus,2891411,32.71,61
+MYS-2025-004,Staphylococcus aureus,2745330,32.55,203
+MYS-2025-005,Salmonella enterica,4812902,52.31,117
+MYS-2026-006,Pseudomonas aeruginosa,6539912,66.12,95
+MYS-2026-007,Bacillus subtilis,4165888,43.49,74
+MYS-2026-008,Listeria monocytogenes,2985404,38.03,55
