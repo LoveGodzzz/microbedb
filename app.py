@@ -325,7 +325,10 @@ def page_amr():
                 return "background:#fef3c7"
             return "background:#dcfce7"
 
-        st.dataframe(piv.style.map(cell_color), use_container_width=True)
+        try:
+            st.dataframe(piv.style.map(cell_color), use_container_width=True)
+        except AttributeError:      # 旧版 pandas 没有 Styler.map，退化为无着色表格
+            st.dataframe(piv, use_container_width=True)
 
     l, r = st.columns(2)
     with l:
