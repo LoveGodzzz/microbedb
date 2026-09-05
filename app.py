@@ -518,6 +518,181 @@ def page_reference():
     st.dataframe(show, use_container_width=True, hide_index=True)
 
 
+# ---------------- 页面：上传比对 ----------------
+def parse_fasta(text):
+    """纯 Python 解析 FASTA：返回 (总长, GC%, contig数, N50)"""
+    lengths, cur, gc_total = [], 0, 0
+    for line in text.splitlines():
+        if line.startswith(">"):
+            if cur:
+                lengths.append(cur)
+            cur = 0
+        else:
+            seq = line.strip().upper()
+            cur += len(seq)
+            gc_total += seq.count("G") + seq.count("C")
+    if cur:
+        lengths.append(cur)
+    total = sum(lengths)
+    if not total:
+        return None
+    lengths.sort(reverse=True)
+    half = 0
+    n50 = 0
+    for L in lengths:
+        half += L
+        if half >= total / 2:
+            n50 = L
+            break
+    return {"size": total, "gc": round(gc_total / total * 100, 2),
+            "contigs": len(lengths), "n50": n50}
+
+
+def percentile_rank(values, x):
+    """x 在 values 中的百分位（0~100）"""
+    vals = [v for v in values if v is not None]
+    if not vals:
+        return None
+    return round(sum(1 for v in vals if v < x) / len(vals) * 100)
+
+
+def page_upload():
+    st.subheader("上传你的数据与数据库比对")
+    st.caption("上传的文件只在内存中处理，不会被保存。对比基准：库内模拟组装 + RefSeq 真实基因组。")
+
+    mode = st.tabs(["🧬 上传 FASTA（单个基因组）", "📄 上传 CSV/TSV（批量统计表）"])
+
+    with mode[0]:
+        up = st.file_uploader("选择 FASTA 文件（.fna / .fa / .fasta，支持 gzip）",
+                              type=["fna", "fa", "fasta", "gz"])
+        if not up:
+            st.info("把你的 contig/scaffold 序列文件拖进来即可，例如 SPAdes 组装出的 contigs.fasta")
+        else:
+            import gzip
+            raw = up.read()
+            if up.name.endswith(".gz"):
+                raw = gzip.decompress(raw)
+            text = raw.decode("utf-8", "replace")
+            with st.spinner("正在计算组装指标..."):
+                stats = parse_fasta(text)
+            if not stats:
+                st.error("没有解析到序列：请确认是 FASTA 格式（以 > 开头的行分隔）")
+                return
+            m = st.columns(4)
+            m[0].metric("基因组大小", f"{stats['size'] / 1e6:.2f} Mb")
+            m[1].metric("GC 含量", f"{stats['gc']:.2f}%")
+            m[2].metric("Contigs", stats["contigs"])
+            m[3].metric("N50", f"{stats['n50'] / 1000:.0f} kb")
+
+            refs = q("SELECT species, size, gc, n50 FROM reference_genomes")
+            sim = q("""SELECT t.name AS species, a.total_length AS size, a.gc_content AS gc,
+                              a.n50 AS n50
+                       FROM assemblies a
+                       JOIN sequencing_runs r ON r.run_id = a.run_id
+                       JOIN strains s ON s.strain_id = r.strain_id
+                       JOIN taxonomy t ON t.taxon_id = s.taxon_id
+                       WHERE a.status='succeeded'""")
+            pool = pd.concat([refs, sim], ignore_index=True)
+
+            # 自动推荐最接近的物种（按大小和 GC 的中位偏差）
+            med = pool.groupby("species").agg(ms=("size", "median"), mg=("gc", "median"),
+                                              ss=("size", lambda x: x.quantile(.75) - x.quantile(.25)),
+                                              sg=("gc", lambda x: x.quantile(.75) - x.quantile(.25)))
+            score = ((med.ms - stats["size"]).abs() / med.ss + (med.mg - stats["gc"]).abs() / med.sg)
+            best = score.idxmin()
+
+            species = st.selectbox("对比哪个物种？（已按你的数据自动推荐）",
+                                   sorted(pool.species.unique()),
+                                   index=sorted(pool.species.unique()).index(best))
+            sub = pool[pool.species == species]
+            sub_real = refs[refs.species == species]
+
+            st.markdown(f"**你的基因组 vs {species}（含 {len(sub_real)} 个真实 RefSeq 基因组 + "
+                        f"{len(sub) - len(sub_real)} 个库内模拟组装）**")
+            plot_df = sub[["size", "gc", "n50", "species"]].copy()
+            plot_df["数据来源"] = "库内数据"
+            yours = pd.DataFrame([{"size": stats["size"], "gc": stats["gc"],
+                                   "n50": stats["n50"], "species": species,
+                                   "数据来源": "你的数据"}])
+            all_df = pd.concat([plot_df, yours], ignore_index=True)
+            all_df["Mb"] = all_df["size"] / 1e6
+            l, r = st.columns(2)
+            with l:
+                st.plotly_chart(px.box(all_df, x="数据来源", y="Mb", color="数据来源",
+                                       color_discrete_map={"你的数据": "#f59e0b",
+                                                           "库内数据": ACCENT},
+                                       points="all"),
+                                use_container_width=True)
+            with r:
+                st.plotly_chart(px.box(all_df, x="数据来源", y="gc", color="数据来源",
+                                       color_discrete_map={"你的数据": "#f59e0b",
+                                                           "库内数据": ACCENT},
+                                       points="all"),
+                                use_container_width=True)
+
+            pr_size = percentile_rank(sub["size"], stats["size"])
+            pr_gc = percentile_rank(sub["gc"], stats["gc"])
+            pr_n50 = percentile_rank(sub["n50"], stats["n50"])
+            c1, c2, c3 = st.columns(3)
+            c1.metric("大小百分位", f"{pr_size}%",
+                      f"超过 {pr_size}% 的{species}基因组")
+            c2.metric("GC 百分位", f"{pr_gc}%", f"库内中位 {sub.gc.median():.2f}%")
+            c3.metric("N50 百分位", f"{pr_n50}%",
+                      "越大说明组装越连续" if pr_n50 else "-")
+            st.caption(f"推荐依据：你的基因组与 **{best}** 的分布最接近。"
+                       f"GC {'在' if 40 <= stats['gc'] <= 60 else '超出'}常见细菌范围(40~60%)。")
+
+    with mode[1]:
+        up2 = st.file_uploader("上传组装统计表（CSV/TSV，需含物种、大小、GC 列）",
+                               type=["csv", "tsv", "txt"], key="csv")
+        if up2:
+            raw2 = up2.read().decode("utf-8", "replace")
+            sep = "\t" if (up2.name.endswith(".tsv") or "\t" in raw2.splitlines()[0]) else ","
+            user_df = pd.read_csv(pd.io.common.StringIO(raw2), sep=sep)
+            st.caption(f"已读取 {len(user_df)} 行，列名如下，请映射到对比字段")
+            c1, c2, c3, c4 = st.columns(4)
+            cols = ["（跳过）"] + list(user_df.columns)
+            m_species = c1.selectbox("物种列", cols, index=1 if len(cols) > 1 else 0)
+            m_size = c2.selectbox("基因组大小列（bp）", cols, index=0)
+            m_gc = c3.selectbox("GC 含量列（%）", cols, index=0)
+            m_n50 = c4.selectbox("N50 列（bp）", cols, index=0)
+            if m_size == "（跳过）":
+                st.warning("至少映射基因组大小列才能对比")
+                return
+            pool = q("""SELECT t.name AS species, a.total_length AS size, a.gc_content AS gc,
+                               a.n50 AS n50
+                        FROM assemblies a
+                        JOIN sequencing_runs r ON r.run_id = a.run_id
+                        JOIN strains s ON s.strain_id = r.strain_id
+                        JOIN taxonomy t ON t.taxon_id = s.taxon_id
+                        WHERE a.status='succeeded'""")
+            refs = q("SELECT species, size, gc, n50 FROM reference_genomes")
+            pool = pd.concat([pool, refs], ignore_index=True)
+
+            user_df = user_df[user_df[m_size].apply(lambda v: str(v).replace(".", "").isdigit())]
+            user_df = user_df.assign(
+                species=user_df[m_species] if m_species != "（跳过）" else "未知物种",
+                size=user_df[m_size].astype(float),
+                gc=user_df[m_gc].astype(float) if m_gc != "（跳过）" else None,
+                n50=user_df[m_n50].astype(float) if m_n50 != "（跳过）" else None)
+            user_df["数据来源"] = "上传数据"
+            pool["数据来源"] = "库内数据"
+            both = pd.concat([pool[["species", "size", "gc", "n50", "数据来源"]],
+                              user_df[["species", "size", "gc", "n50", "数据来源"]]],
+                             ignore_index=True)
+            both["Mb"] = both["size"] / 1e6
+            st.plotly_chart(px.box(both, x="species", y="Mb", color="数据来源",
+                                   color_discrete_map={"上传数据": "#f59e0b",
+                                                       "库内数据": ACCENT},
+                                   points="all"),
+                            use_container_width=True)
+            out = user_df[["species", "size", "gc", "n50"]].copy()
+            out["大小百分位"] = [
+                percentile_rank(pool[pool.species == s]["size"], x) for s, x in zip(out.species, out.size)]
+            st.markdown("**你上传的每一行 vs 库内同物种分布**")
+            st.dataframe(out, use_container_width=True, hide_index=True)
+
+
 # ---------------- 主入口 ----------------
 PAGES = {
     "📊 总览仪表盘": page_dashboard,
@@ -525,6 +700,7 @@ PAGES = {
     "🧬 基因组注释": page_genes,
     "💊 耐药分析": page_amr,
     "🔬 真实数据对比": page_reference,
+    "📤 上传比对": page_upload,
     "⚙️ 分析任务": page_jobs,
     "ℹ️ 关于": page_about,
 }

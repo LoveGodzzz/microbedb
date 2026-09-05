@@ -34,6 +34,7 @@ streamlit run app.py
 | 🧬 基因组注释 | 组装质量指标（N50/GC/完整度），基因列表分页浏览与功能检索 |
 | 💊 耐药分析 | 耐药率排行、耐药机制分布、物种×药物耐药率矩阵、耐药基因 Top 榜 |
 | 🔬 真实数据对比 | 导入 NCBI RefSeq 真实参考基因组元数据（每物种 30 个），与模拟数据对比大小/GC/N50 分布 |
+| 📤 上传比对 | **访客上传自己的数据直接比对**：FASTA 文件现场计算大小/GC/N50 并给出百分位与物种推荐；或上传 CSV/TSV 批量统计表对比。文件只在内存中处理，不保存 |
 | ⚙️ 分析任务 | 任务列表/筛选、提交任务、状态流转并记录审计日志 |
 
 ## 数据模型
@@ -65,6 +66,7 @@ JSON 字段等 MySQL 特性，并附 ER 图、数据字典与 20 道 SQL 练习�
 ├── fetch_reference.py  # 从 NCBI Datasets API 拉取真实 RefSeq 元数据
 ├── refseq_reference.json  # 真实参考基因组数据（已随仓库提供）
 ├── microbe.db          # 预生成的 SQLite 数据库（可直接用）
+├── sample_genome.fna.gz   # 示例基因组（可用于测试上传比对）
 └── requirements.txt
 ```
 
