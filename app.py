@@ -213,7 +213,10 @@ def detail_strain(sid):
                       JOIN assemblies a ON a.assembly_id = h.assembly_id
                       JOIN sequencing_runs r ON r.run_id = a.run_id
                       WHERE r.strain_id=?""", (sid,))
-            st.dataframe(am, use_container_width=True, hide_index=True) if len(am) else st.info("未检出")
+            if len(am):
+                st.dataframe(am, use_container_width=True, hide_index=True)
+            else:
+                st.info("未检出")
         with r:
             st.markdown("**毒力因子（VF）**")
             vf = q("""SELECT vf_name AS 因子, category AS 类别, description AS 说明,
@@ -222,7 +225,10 @@ def detail_strain(sid):
                       JOIN assemblies a ON a.assembly_id = v.assembly_id
                       JOIN sequencing_runs r ON r.run_id = a.run_id
                       WHERE r.strain_id=?""", (sid,))
-            st.dataframe(vf, use_container_width=True, hide_index=True) if len(vf) else st.info("未检出")
+            if len(vf):
+                st.dataframe(vf, use_container_width=True, hide_index=True)
+            else:
+                st.info("未检出")
 
 
 # ---------------- 页面：基因组注释 ----------------
