@@ -99,6 +99,18 @@ CREATE TABLE job_events (
   changed_by TEXT NOT NULL DEFAULT 'system', changed_at TEXT NOT NULL
 );
 
+-- 真实 RefSeq 参考基因组（来自 NCBI Datasets API，见 fetch_reference.py）
+CREATE TABLE reference_genomes (
+  accession  TEXT PRIMARY KEY,
+  species    TEXT NOT NULL,
+  organism_name TEXT, strain TEXT,
+  level      TEXT, refseq_category TEXT,
+  size       INTEGER, gc REAL,
+  contigs    INTEGER, n50 INTEGER,
+  completeness REAL, release_date TEXT
+);
+CREATE INDEX idx_ref_species ON reference_genomes (species);
+
 CREATE VIEW v_strain_overview AS
 SELECT
   s.strain_id, s.isolate_code, t.name AS species_name,
@@ -174,6 +186,27 @@ INSERTS = {
 }
 
 
+def load_reference():
+    """读取 fetch_reference.py 生成的 JSON，字段转成正确的数值类型"""
+    import json
+    path = os.path.join(HERE, "refseq_reference.json")
+    with open(path, encoding="utf-8") as f:
+        rows = json.load(f)
+    out = []
+    for r in rows:
+        def num(v, cast=int):
+            try:
+                return cast(v) if v not in (None, "", "na") else None
+            except (TypeError, ValueError):
+                return None
+        out.append((r["accession"], r["species"], r.get("organism_name"),
+                    r.get("strain"), r.get("level"), r.get("refseq_category"),
+                    num(r.get("size")), num(r.get("gc"), float),
+                    num(r.get("contigs")), num(r.get("n50")),
+                    num(r.get("completeness"), float), r.get("release_date")))
+    return out
+
+
 def main():
     data = build()
     if os.path.exists(DB):
@@ -182,6 +215,9 @@ def main():
     conn.executescript(SCHEMA)
     for table, sql in INSERTS.items():
         conn.executemany(sql, data[table])
+    ref = load_reference()
+    conn.executemany(
+        "INSERT OR REPLACE INTO reference_genomes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", ref)
     conn.commit()
     for table in INSERTS:
         n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]

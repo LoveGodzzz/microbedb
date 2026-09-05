@@ -456,12 +456,75 @@ taxonomy(自引用分类树) ─┬─→ strains(菌株) ─┬─→ sequencin
     st.caption("Made with Streamlit · SQLite · Plotly · 模拟数据")
 
 
+# ---------------- 页面：真实数据对比 ----------------
+def page_reference():
+    st.subheader("模拟数据 vs 真实数据")
+    st.caption("真实数据：NCBI RefSeq 参考基因组元数据（每物种 30 个，"
+               "经 Datasets API 拉取，见 fetch_reference.py）。"
+               "用于检验模拟数据的生物学合理性——不代表任何真实监测结论。")
+
+    refs = q("""SELECT species AS 物种, size AS 总长, gc AS 'GC含量', n50 AS N50,
+                       contigs AS Contigs, level AS 组装级别, accession AS 登记号,
+                       organism_name AS 菌株名, strain AS 菌株, completeness AS 完整度
+                FROM reference_genomes""").copy()
+    refs["数据来源"] = "RefSeq 真实"
+    sim = q("""SELECT t.name AS 物种, a.total_length AS 总长, a.gc_content AS 'GC含量',
+                      a.n50 AS N50, a.contig_count AS Contigs, a.completeness AS 完整度
+               FROM assemblies a
+               JOIN sequencing_runs r ON r.run_id = a.run_id
+               JOIN strains s ON s.strain_id = r.strain_id
+               JOIN taxonomy t ON t.taxon_id = s.taxon_id
+               WHERE a.status='succeeded'""").copy()
+    sim["数据来源"] = "模拟数据"
+    sim["组装级别"] = "succeeded"
+
+    both = pd.concat([refs[["物种", "总长", "GC含量", "N50", "Contigs", "数据来源"]],
+                      sim[["物种", "总长", "GC含量", "N50", "Contigs", "数据来源"]]])
+    both["Mb"] = both["总长"] / 1e6
+
+    l, r = st.columns(2)
+    with l:
+        st.markdown("**基因组大小（Mb）**")
+        st.plotly_chart(px.box(both, x="物种", y="Mb", color="数据来源",
+                               color_discrete_map={"RefSeq 真实": "#dc2626",
+                                                   "模拟数据": ACCENT}),
+                        use_container_width=True)
+    with r:
+        st.markdown("**GC 含量（%）**")
+        st.plotly_chart(px.box(both, x="物种", y="GC含量", color="数据来源",
+                               color_discrete_map={"RefSeq 真实": "#dc2626",
+                                                   "模拟数据": ACCENT}),
+                        use_container_width=True)
+
+    st.markdown("**N50 对比（对数轴）—— 真实 RefSeq 多为完整基因组（单 contig，N50≈全长），"
+                "模拟数据模拟的是短读长/混合组装的效果**")
+    st.plotly_chart(px.box(both, x="物种", y="N50", color="数据来源", log_y=True,
+                           color_discrete_map={"RefSeq 真实": "#dc2626",
+                                               "模拟数据": ACCENT}),
+                    use_container_width=True)
+
+    st.markdown("**分物种统计摘要**")
+    summary = (both.groupby(["物种", "数据来源"])
+               .agg(数量=("总长", "count"),
+                    大小中位Mb=("Mb", "median"),
+                    大小最小Mb=("Mb", "min"),
+                    大小最大Mb=("Mb", "max"),
+                    GC中位=("GC含量", "median"))
+               .round(2).reset_index())
+    st.dataframe(summary, use_container_width=True, hide_index=True)
+
+    st.markdown("**真实参考基因组示例（RefSeq，前 12 条）**")
+    show = refs.drop(columns=["数据来源"]).head(12)
+    st.dataframe(show, use_container_width=True, hide_index=True)
+
+
 # ---------------- 主入口 ----------------
 PAGES = {
     "📊 总览仪表盘": page_dashboard,
     "🧪 菌株库": page_strains,
     "🧬 基因组注释": page_genes,
     "💊 耐药分析": page_amr,
+    "🔬 真实数据对比": page_reference,
     "⚙️ 分析任务": page_jobs,
     "ℹ️ 关于": page_about,
 }

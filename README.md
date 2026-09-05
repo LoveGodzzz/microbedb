@@ -33,6 +33,7 @@ streamlit run app.py
 | 🧪 菌株库 | 多条件检索（编号/物种/来源），菌株详情：分类谱系（递归 CTE）、测序与组装、药敏表型（S/I/R 着色）、耐药与毒力 |
 | 🧬 基因组注释 | 组装质量指标（N50/GC/完整度），基因列表分页浏览与功能检索 |
 | 💊 耐药分析 | 耐药率排行、耐药机制分布、物种×药物耐药率矩阵、耐药基因 Top 榜 |
+| 🔬 真实数据对比 | 导入 NCBI RefSeq 真实参考基因组元数据（每物种 30 个），与模拟数据对比大小/GC/N50 分布 |
 | ⚙️ 分析任务 | 任务列表/筛选、提交任务、状态流转并记录审计日志 |
 
 ## 数据模型
@@ -58,9 +59,18 @@ JSON 字段等 MySQL 特性，并附 ER 图、数据字典与 20 道 SQL 练习�
 ## 目录结构
 
 ```
-├── app.py            # Streamlit 应用（全部页面与 SQL 查询）
-├── seed_core.py      # 模拟数据生成逻辑（固定种子，可复现）
-├── build_db.py       # 构建 SQLite：schema(约束/视图) + 数据
-├── microbe.db        # 预生成的 SQLite 数据库（可直接用）
+├── app.py              # Streamlit 应用（全部页面与 SQL 查询）
+├── seed_core.py        # 模拟数据生成逻辑（固定种子，可复现）
+├── build_db.py         # 构建 SQLite：schema(约束/视图) + 数据
+├── fetch_reference.py  # 从 NCBI Datasets API 拉取真实 RefSeq 元数据
+├── refseq_reference.json  # 真实参考基因组数据（已随仓库提供）
+├── microbe.db          # 预生成的 SQLite 数据库（可直接用）
 └── requirements.txt
+```
+
+## 更新真实参照数据
+
+```bash
+python fetch_reference.py   # 重新从 NCBI 拉取（每个物种 30 个 RefSeq 基因组）
+python build_db.py          # 重建 microbe.db
 ```
